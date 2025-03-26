@@ -17,7 +17,7 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: "SerenMind | AI-Powered Mental Wellness Companion",
   description: "Your AI-Powered Mental Wellness Companion",
-    generator: 'v0.dev'
+  generator: "v0.dev",
 }
 
 export default function RootLayout({
@@ -33,8 +33,8 @@ export default function RootLayout({
             <PageTransitionProvider>
               <AuthGuard>
                 {children}
-                <Toaster />
               </AuthGuard>
+              <Toaster />
             </PageTransitionProvider>
           </ThemeProvider>
         </AuthProvider>
@@ -42,7 +42,3 @@ export default function RootLayout({
     </html>
   )
 }
-
-
-
-import './globals.css'
