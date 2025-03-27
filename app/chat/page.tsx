@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, startTransition } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -18,6 +17,7 @@ import { ChatBubble } from "@/components/chat/chat-bubble"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { useToast } from "@/components/ui/use-toast"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import axios from "axios";
 
 export default function ChatPage() {
   const { messages, sendMessage, isTyping, clearChat } = useChat()
@@ -38,11 +38,23 @@ export default function ChatPage() {
     scrollToBottom()
   }, [messages, isTyping])
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (inputValue.trim() === "") return
 
-    sendMessage(inputValue)
-    setInputValue("")
+    try {
+      const response = await axios.post("/api/analyzeEmotion", { userMessage: inputValue });
+      const mood = response.data.mood;
+      
+      sendMessage(`${inputValue} (Mood detected: ${mood})`);
+      setInputValue("");
+    } catch (error) {
+      console.error("Error analyzing emotion:", error);
+      toast({
+        title: "Error",
+        description: "Failed to analyze emotion.",
+        variant: "destructive",
+      });
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -90,14 +102,11 @@ export default function ChatPage() {
 
   const stopRecording = () => {
     setIsRecording(false)
-    // In a real implementation, this would process the recorded audio
-    // and convert it to text using a speech-to-text service
     toast({
       title: "Recording stopped",
       description: "Processing your voice input...",
     })
 
-    // Simulate processing delay
     setTimeout(() => {
       const simulatedText = "This is a simulated voice input message."
       setInputValue(simulatedText)
@@ -120,7 +129,6 @@ export default function ChatPage() {
     const emotionMessage = `I'm feeling ${emotion.toLowerCase()} today.`
     setInputValue(emotionMessage)
 
-    // Optional: automatically send after selection
     setTimeout(() => {
       sendMessage(emotionMessage)
       setInputValue("")
@@ -135,8 +143,7 @@ export default function ChatPage() {
       description: "Your conversation has been cleared.",
     })
   }
-
-  return (
+return (
     <div className="min-h-screen bg-[#FAFAFA] dark:bg-gray-900 text-[#333333] dark:text-gray-100 flex flex-col">
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 border-b border-[#6A9FB5]/10 py-4 px-6 sticky top-0 z-10 shadow-sm">
@@ -327,7 +334,8 @@ export default function ChatPage() {
           </Link>
         </div>
       </div>
-    </div>
-  )
-}
+      </div>
+    )
+  }
+
 
