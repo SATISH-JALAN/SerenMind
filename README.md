@@ -63,9 +63,9 @@
 
 # DEPENDERIES
 
-pnpm install
-pnpm run build
-pnpm run dev
+-pnpm install
+-pnpm run build
+-pnpm run dev
 
 
 # API
