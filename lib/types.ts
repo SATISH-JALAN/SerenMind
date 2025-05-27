@@ -7,7 +7,17 @@ export interface Message {
   timestamp: Date
 }
 
-export type Mood = "Happy" | "Calm" | "Neutral" | "Anxious" | "Sad"
+export type Mood = 
+  | "Happy" 
+  | "Calm" 
+  | "Neutral" 
+  | "Anxious" 
+  | "Stressed"
+  | "Sad" 
+  | "Angry"
+  | "Tired"
+  | "Confused"
+  | "Hopeful"
 
 export interface MoodEntry {
   id: string

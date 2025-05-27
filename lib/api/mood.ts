@@ -2,6 +2,8 @@
 // In a real implementation, these would interact with a backend service
 
 import type { MoodEntry, MoodInsight } from "@/lib/types"
+import { collection, query, where, getDocs, addDoc, orderBy, Timestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 // Simulated delay for API calls
 const simulateApiDelay = () => new Promise((resolve) => setTimeout(resolve, 1000))
@@ -11,79 +13,86 @@ export async function getMoodHistory(
   userId: string,
   timeframe: "week" | "month" | "year" = "week",
 ): Promise<MoodEntry[]> {
-  await simulateApiDelay()
-
-  // In a real implementation, this would fetch mood history from a backend
-  // For demo purposes, we'll return mock mood entries
-
-  const now = new Date()
-  const moodTypes = ["Happy", "Calm", "Neutral", "Anxious", "Sad"]
-  const entries: MoodEntry[] = []
-
-  let daysToGenerate = 7
-  if (timeframe === "month") daysToGenerate = 30
-  if (timeframe === "year") daysToGenerate = 365
-
-  for (let i = 0; i < daysToGenerate; i++) {
-    const date = new Date(now)
-    date.setDate(date.getDate() - i)
-
-    entries.push({
-      id: `mood-${i}`,
-      date,
-      mood: moodTypes[Math.floor(Math.random() * moodTypes.length)] as any,
-      notes: i % 3 === 0 ? "Added some notes about my day" : undefined,
-    })
+  console.log('Getting mood history for user:', userId, 'timeframe:', timeframe);
+  
+  if (!db) {
+    console.error('Firebase is not initialized');
+    return [];
   }
 
-  return entries
+  try {
+    const moodRef = collection(db, 'users', userId, 'mood_entries');
+    const q = query(moodRef, orderBy('date', 'desc'));
+    
+    console.log('Fetching mood entries from Firestore...');
+    const querySnapshot = await getDocs(q);
+    console.log('Found', querySnapshot.size, 'mood entries');
+    
+    const entries = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      date: doc.data().date.toDate(),
+      mood: doc.data().mood,
+      notes: doc.data().notes,
+    }));
+    
+    return entries;
+  } catch (error) {
+    console.error('Error fetching mood history:', error);
+    return [];
+  }
 }
 
 // Save a new mood entry
 export async function saveMoodEntry(userId: string, mood: string, notes?: string): Promise<MoodEntry> {
-  await simulateApiDelay()
+  console.log('Saving mood entry for user:', userId, 'mood:', mood);
+  
+  if (!db) {
+    console.error('Firebase is not initialized');
+    throw new Error('Firebase is not initialized');
+  }
 
-  // In a real implementation, this would save the mood entry to a backend
-  // For demo purposes, we'll return a mock entry
-
-  return {
-    id: `mood-${Date.now()}`,
-    date: new Date(),
-    mood: mood as any,
-    notes,
+  try {
+    const moodRef = collection(db, 'users', userId, 'mood_entries');
+    const docRef = await addDoc(moodRef, {
+      date: Timestamp.now(),
+      mood,
+      notes,
+    });
+    
+    console.log('Mood entry saved with ID:', docRef.id);
+    
+    return {
+      id: docRef.id,
+      date: new Date(),
+      mood: mood as any,
+      notes,
+    };
+  } catch (error) {
+    console.error('Error saving mood entry:', error);
+    throw error;
   }
 }
 
 // Get mood insights
 export async function getMoodInsights(userId: string): Promise<MoodInsight[]> {
-  await simulateApiDelay()
+  if (!db) {
+    console.error('Firebase is not initialized');
+    return [];
+  }
 
-  // In a real implementation, this would fetch AI-generated insights from a backend
-  // For demo purposes, we'll return mock insights
-
-  return [
-    {
-      id: "insight-1",
-      title: "Morning Mood Pattern",
-      description:
-        "You tend to feel more positive in the mornings. Consider scheduling challenging tasks for these times when your mood is typically better.",
-      type: "pattern",
-    },
-    {
-      id: "insight-2",
-      title: "Stress Triggers",
-      description:
-        "Work-related activities often correlate with increased stress levels. Taking short breaks during work might help manage this stress.",
-      type: "trigger",
-    },
-    {
-      id: "insight-3",
-      title: "Mood Improvement",
-      description:
-        "Physical activity appears to improve your mood. Even short walks could be beneficial for your mental wellbeing.",
-      type: "improvement",
-    },
-  ]
+  try {
+    // Import and use the new mood analysis function
+    const { getMoodInsights: analyzeMoodInsights } = await import('./mood-analysis');
+    return await analyzeMoodInsights(userId);
+  } catch (error) {
+    console.error('Error getting mood insights:', error);
+    return [{
+      id: 'error',
+      title: 'Analysis Error',
+      description: 'Unable to generate insights at this time. Please try again later.',
+      type: 'pattern'
+    }];
+  }
 }
 
 // Get mood recommendations
@@ -144,6 +153,83 @@ export async function getMoodRecommendations(userId: string, currentMood?: strin
         duration: "20 min",
       },
     ]
+  }
+}
+
+// Get mood entries for a specific month
+export async function getMoodEntries(userId: string, year: number, month: number): Promise<MoodEntry[]> {
+  try {
+    if (!db) {
+      console.error('Firebase is not initialized');
+      return [];
+    }
+
+    const startDate = new Date(year, month, 1);
+    const endDate = new Date(year, month + 1, 0);
+
+    const moodRef = collection(db, 'users', userId, 'mood_entries');
+    const q = query(
+      moodRef,
+      where('date', '>=', Timestamp.fromDate(startDate)),
+      where('date', '<=', Timestamp.fromDate(endDate)),
+      orderBy('date', 'desc')
+    );
+
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      date: doc.data().date.toDate(),
+      mood: doc.data().mood as Mood,
+      notes: doc.data().notes,
+    }));
+  } catch (error) {
+    console.error('Error fetching mood entries:', error);
+    return [];
+  }
+}
+
+// Add a new mood entry
+export async function addMoodEntry(
+  userId: string,
+  mood: Mood,
+  notes?: string
+): Promise<MoodEntry | null> {
+  try {
+    if (!db) {
+      console.error('Firebase is not initialized');
+      return null;
+    }
+
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+
+    if (!mood) {
+      throw new Error('Mood is required');
+    }
+
+    const moodRef = collection(db, 'users', userId, 'mood_entries');
+    
+    // Create the document data with only valid fields
+    const docData = {
+      date: Timestamp.now(),
+      mood,
+      ...(notes && notes.trim() ? { notes: notes.trim() } : {}) // Only include non-empty notes
+    };
+
+    const docRef = await addDoc(moodRef, docData);
+    
+    console.log('Mood entry saved with ID:', docRef.id);
+    
+    return {
+      id: docRef.id,
+      date: new Date(),
+      mood,
+      ...(notes && notes.trim() ? { notes: notes.trim() } : {}) // Only include non-empty notes
+    };
+  } catch (error) {
+    console.error('Error adding mood entry:', error);
+    throw error;
   }
 }
 

@@ -9,6 +9,7 @@ import {
   getMoodInsights,
   getMoodRecommendations,
 } from "@/lib/api/mood"
+import { db } from "@/lib/firebase"
 
 export function useMood() {
   const [moodHistory, setMoodHistory] = useState<MoodEntry[]>([])
@@ -21,53 +22,71 @@ export function useMood() {
   useEffect(() => {
     // Load mood history when user or timeframe changes
     const loadMoodData = async () => {
-      if (user) {
-        setIsLoading(true)
-        try {
-          const history = await getMoodHistory(user.id, timeframe)
-          setMoodHistory(history)
-
-          const moodInsights = await getMoodInsights(user.id)
-          setInsights(moodInsights)
-
-          const moodRecommendations = await getMoodRecommendations(user.id)
-          setRecommendations(moodRecommendations)
-        } catch (error) {
-          console.error("Error loading mood data:", error)
-        } finally {
-          setIsLoading(false)
-        }
+      if (!user) {
+        console.log('No user logged in');
+        return;
       }
-    }
 
-    loadMoodData()
-  }, [user, timeframe])
+      if (!db) {
+        console.error('Firebase is not initialized');
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        console.log('Loading mood data for user:', user.uid);
+        const history = await getMoodHistory(user.uid, timeframe);
+        setMoodHistory(history);
+
+        const moodInsights = await getMoodInsights(user.uid);
+        setInsights(moodInsights);
+
+        const moodRecommendations = await getMoodRecommendations(user.uid);
+        setRecommendations(moodRecommendations);
+      } catch (error) {
+        console.error("Error loading mood data:", error);
+        // Set empty states on error
+        setMoodHistory([]);
+        setInsights([]);
+        setRecommendations([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadMoodData();
+  }, [user, timeframe]);
 
   const saveMoodEntry = async (mood: string, notes?: string) => {
+    if (!user) {
+      throw new Error("User must be logged in to save mood entries");
+    }
+
+    if (!db) {
+      throw new Error("Firebase is not initialized");
+    }
+
     try {
-      setIsLoading(true)
-
-      if (!user) {
-        throw new Error("User must be logged in to save mood entries")
-      }
-
-      const newEntry = await apiSaveMoodEntry(user.id, mood, notes)
-
+      setIsLoading(true);
+      console.log('Saving mood entry for user:', user.uid);
+      
+      const newEntry = await apiSaveMoodEntry(user.uid, mood, notes);
+      
       // Update local state
-      setMoodHistory((prev) => [newEntry, ...prev])
+      setMoodHistory((prev) => [newEntry, ...prev]);
 
       // Get updated recommendations based on new mood
-      const updatedRecommendations = await getMoodRecommendations(user.id, mood)
-      setRecommendations(updatedRecommendations)
+      const updatedRecommendations = await getMoodRecommendations(user.uid, mood);
+      setRecommendations(updatedRecommendations);
 
-      return newEntry
+      return newEntry;
     } catch (error) {
-      console.error("Error saving mood entry:", error)
-      throw error
+      console.error("Error saving mood entry:", error);
+      throw error;
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return {
     moodHistory,
@@ -77,6 +96,6 @@ export function useMood() {
     timeframe,
     setTimeframe,
     saveMoodEntry,
-  }
+  };
 }
 

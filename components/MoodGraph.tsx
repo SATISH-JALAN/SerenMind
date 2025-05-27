@@ -1,5 +1,3 @@
-"use client"
-
 import { useEffect, useState } from 'react';
 import {
   LineChart,
@@ -10,50 +8,61 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { useAuth } from '@/lib/context/auth-context';
-import { getMentalMetrics, type MentalMetricWithId } from '@/lib/api/mental-metrics';
+import { collection, query, orderBy, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { useAuth } from '@/lib/auth';
 import { format } from 'date-fns';
+
+interface MoodData {
+  moodScore: number;
+  timestamp: {
+    toDate: () => Date;
+  };
+}
 
 interface ChartData {
   date: string;
   moodScore: number;
 }
 
-export function MoodChart() {
-  const [data, setData] = useState<ChartData[]>([]);
+export default function MoodGraph() {
+  const [chartData, setChartData] = useState<ChartData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchMoodData = async () => {
       if (!user) {
-        setError('User must be logged in to view mood data');
+        setError('User not authenticated');
         setIsLoading(false);
         return;
       }
 
       try {
-        const metrics = await getMentalMetrics(user.uid);
-        
-        // Transform data for the chart
-        const chartData = metrics
-          .filter(metric => metric.timestamp && metric.moodScore)
-          .map(metric => ({
-            date: format(metric.timestamp, 'MMM d'),
-            moodScore: metric.moodScore,
-          }))
-          .reverse(); // Show oldest to newest
+        const mentalMetricsRef = collection(db, 'users', user.uid, 'mental_metrics');
+        const q = query(mentalMetricsRef, orderBy('timestamp', 'asc'));
+        const querySnapshot = await getDocs(q);
 
-        setData(chartData);
+        const data: ChartData[] = querySnapshot.docs.map((doc) => {
+          const moodData = doc.data() as MoodData;
+          return {
+            date: format(moodData.timestamp.toDate(), 'MM/dd/yyyy'),
+            moodScore: moodData.moodScore,
+          };
+        });
+
+        setChartData(data);
+        setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load mood data');
+        console.error('Error fetching mood data:', err);
+        setError('Failed to load mood data');
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchData();
+    fetchMoodData();
   }, [user]);
 
   if (isLoading) {
@@ -72,7 +81,7 @@ export function MoodChart() {
     );
   }
 
-  if (data.length === 0) {
+  if (chartData.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-500">
         No mood data available
@@ -81,24 +90,16 @@ export function MoodChart() {
   }
 
   return (
-    <div className="w-full h-64">
+    <div className="w-full h-64 p-4">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart
-          data={data}
-          margin={{
-            top: 5,
-            right: 30,
-            left: 20,
-            bottom: 5,
-          }}
-        >
+        <LineChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis 
-            dataKey="date" 
+          <XAxis
+            dataKey="date"
             tick={{ fontSize: 12 }}
             tickMargin={10}
           />
-          <YAxis 
+          <YAxis
             domain={[0, 10]}
             tickCount={11}
             tick={{ fontSize: 12 }}
@@ -109,9 +110,8 @@ export function MoodChart() {
               backgroundColor: 'white',
               border: '1px solid #ccc',
               borderRadius: '4px',
-              padding: '8px',
             }}
-            formatter={(value: number) => [`${value}`, 'Mood Score']}
+            formatter={(value: number) => [`Mood: ${value}`, 'Score']}
             labelFormatter={(label) => `Date: ${label}`}
           />
           <Line
@@ -126,20 +126,4 @@ export function MoodChart() {
       </ResponsiveContainer>
     </div>
   );
-}
-
-/**
- * Example usage:
- * 
- * ```tsx
- * function MoodPage() {
- *   return (
- *     <div className="p-4">
- *       <h2 className="text-2xl font-bold mb-4">Mood History</h2>
- *       <MoodChart />
- *     </div>
- *   );
- * }
- * ```
- */
-
+} 

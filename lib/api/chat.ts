@@ -2,6 +2,10 @@
 // In a real implementation, these would interact with a backend service
 
 import type { Message } from "@/lib/types";
+import MoodGraph from '@/components/MoodGraph';
+import { Auth, getAuth } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import { analyzeAndSaveChatMetrics } from './mental-metrics';
 
 // ✅ Google API Key (Replace with environment variable in production)
 const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
@@ -53,6 +57,7 @@ async function fetchGoogleAiResponse(userMessage: string): Promise<string> {
 3. Focused on emotional well-being
 4. Brief and to the point
 5. Free of medical advice or diagnoses
+6. Response should be in more crisp , witty and engaging manner
 
 User message: ${userMessage}
 
@@ -154,11 +159,29 @@ Respond as a caring friend who listens and supports.`
 // Get AI response
 export async function getAiResponse(userId: string, userMessage: string): Promise<Message> {
   try {
+    // Check for API key first
+    if (!GOOGLE_API_KEY) {
+      console.error("Google API key is missing");
+      return {
+        id: Date.now().toString(),
+        content: "I'm currently unable to respond due to a configuration issue. Please try again later.",
+        sender: "ai",
+        timestamp: new Date(),
+      };
+    }
+
     // Simulate API delay
     await simulateApiDelay();
 
     // Get AI response
     const aiResponse = await fetchGoogleAiResponse(userMessage);
+
+    // Analyze and save mental metrics if auth is available
+    if (auth) {
+      await analyzeAndSaveChatMetrics(userMessage, auth);
+    } else {
+      console.warn('Firebase auth not initialized, skipping mental metrics analysis');
+    }
 
     // Create and return AI message
     const aiMessage: Message = {
@@ -172,10 +195,20 @@ export async function getAiResponse(userId: string, userMessage: string): Promis
   } catch (error) {
     console.error("Error getting AI response:", error);
     
-    // Return a fallback message if the API fails
+    // Return a more specific error message based on the error type
+    let errorMessage = "I'm having trouble connecting right now. Could you try again in a moment?";
+    
+    if (error instanceof Error) {
+      if (error.message.includes("API key")) {
+        errorMessage = "I'm currently unable to respond due to a configuration issue. Please try again later.";
+      } else if (error.message.includes("Invalid request")) {
+        errorMessage = "I'm having trouble understanding that. Could you rephrase your message?";
+      }
+    }
+    
     return {
       id: Date.now().toString(),
-      content: "I'm having trouble connecting right now. Could you try again in a moment?",
+      content: errorMessage,
       sender: "ai",
       timestamp: new Date(),
     };
